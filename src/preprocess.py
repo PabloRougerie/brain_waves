@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from src.params import *
 from pathlib import Path
+from tqdm import tqdm
 
 
 def load_parquet(spec_id: str) -> pd.DataFrame:
@@ -59,34 +60,36 @@ def prepare_spectrograms(df: pd.DataFrame, duration: float = 600, architecture: 
     if architecture not in ["cnn", "lstm", "transformer"]:
         raise ValueError(f"architecture must be 'cnn', 'lstm', or 'transformer', got '{architecture}'")
 
-    #iterates over spec
-    for spec_id, group in df.groupby("spectrogram_id"):
+    spec_groups = list(df.groupby("spectrogram_id"))
+    n_specs = len(spec_groups)
+    n_total = len(df)
+    n_saved = 0
+    n_skipped = 0
+
+    print(f"Starting preprocessing: {n_specs} spectrograms / {n_total} subsamples")
+
+    for spec_id, group in tqdm(spec_groups, desc="Spectrograms", unit="spec"):
         df_spec = load_parquet(spec_id)
 
-        #iterates over subsamples
         for _, row in group.iterrows():
-
             offset = row["spectrogram_label_offset_seconds"]
             subsample_id = row["spectrogram_sub_id"]
-
             save_path = Path(PROCESSED_DIR / f"{spec_id}-{subsample_id}")
 
-            #avoid re-generating existing spec, unless forced
-            if save_path.exists() and force is not False:
-                print(f"spectrogram {spec_id} - subsample {subsample_id} already exists: skipped")
+            if save_path.exists() and not force:
+                n_skipped += 1
                 continue
 
-            #crop to right start and duration
             df_cropped = crop(df_spec, offset, duration)
-            #reshape to shape (time, region, frequencies)
             spec_array = reshape_by_region(df=df_cropped)
 
             if architecture == "cnn":
-                #reorder to (canal, frequencies, times) as needed for CNN
                 spec_out = reorder_dimensions(arr=spec_array, axes=(1, 2, 0))
             else:
                 spec_out = reorder_dimensions(arr=spec_array, axes=(1, 2, 0))
 
-            #save subsampled spectrograms with explicit names.
-            save_path.parent.mkdir(parents=True, exist_ok=True) #create parent dir if doesnt exists
+            save_path.parent.mkdir(parents=True, exist_ok=True)
             save_spec(spec=spec_out, path=save_path)
+            n_saved += 1
+
+    print(f"Done — {n_saved} saved, {n_skipped} skipped (already existed)")
