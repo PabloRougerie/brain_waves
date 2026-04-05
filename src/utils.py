@@ -1,0 +1,19 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd().parent))
+from src.params import *
+import numpy as np
+import pandas as pd
+
+
+
+def load_spectrogram(df: pd.DataFrame, idx: int) -> np.ndarray:
+    """Load a preprocessed spectrogram array from disk for a given metadata row index."""
+    spec_id = df.iloc[idx]["spectrogram_id"]
+    subsample_id = df.iloc[idx]["spectrogram_sub_id"]
+
+    #load file
+    path = PROCESSED_DIR / f"{spec_id}-{subsample_id}.npy"
+    spec = np.load(path)
+
+    return spec
