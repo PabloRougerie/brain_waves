@@ -16,4 +16,7 @@ def load_spectrogram(df: pd.DataFrame, idx: int) -> np.ndarray:
     path = PROCESSED_DIR / f"{spec_id}-{subsample_id}.npy"
     spec = np.load(path)
 
+    #impute zero to nan values
+    spec= np.nan_to_num(spec, nan=0.0)
+
     return spec
