@@ -3,8 +3,7 @@ from pathlib import Path
 KAGGLE = Path('/kaggle').exists()
 
 if KAGGLE:
-    ROOT = Path('/kaggle/working/brain_waves')
-    DATA_DIR = Path('/kaggle/input/hms-harmful-brain-activity-classification')
+    DATA_DIR = Path('/kaggle/input/competitions/hms-harmful-brain-activity-classification')
     SPEC_DIR = DATA_DIR / 'train_spectrograms'
     PROCESSED_DIR = Path('/kaggle/working/processed')
     CACHE_DIR = Path('/kaggle/working/cache')
