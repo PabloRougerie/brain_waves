@@ -12,6 +12,7 @@ wheels/
 
 #data
 data/
+!data/cache/
 
 #secrets
 .env
