@@ -162,13 +162,9 @@ class BrainDataModule(LightningDataModule):
         #load data for the desired fold
         self.train_idx = np.array(splits_dict[str(self.n_fold)]["train_idx"])
         self.val_idx   = np.array(splits_dict[str(self.n_fold)]["val_idx"])
-        self.mean      = np.array(splits_dict[str(self.n_fold)]["mean"])
-        self.std       = np.array(splits_dict[str(self.n_fold)]["std"])
+        self.mean      = np.array(splits_dict[str(self.n_fold)]["mean"], dtype= np.float32)
+        self.std       = np.array(splits_dict[str(self.n_fold)]["std"], dtype= np.float32)
 
-        print(f"train_idx dtype: {self.train_idx.dtype}")
-        print(f"val_idx   dtype: {self.val_idx.dtype}")
-        print(f"mean      dtype: {self.mean.dtype}")
-        print(f"std       dtype: {self.std.dtype}")
 
         self.dataset = BrainDataset(metadata=self.metadata, mean=self.mean, std=self.std)
 
@@ -183,7 +179,7 @@ class BrainDataModule(LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            pin_memory=True,
+            pin_memory=False,
             persistent_workers=self.num_workers > 0,
         )
 
@@ -194,6 +190,6 @@ class BrainDataModule(LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=True,
+            pin_memory=False,
             persistent_workers=self.num_workers > 0,
         )

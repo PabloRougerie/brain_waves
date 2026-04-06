@@ -28,7 +28,7 @@ def reshape_by_region(
     """
     n_times = df.shape[0]
     n_regions = len(regions)
-    spec = np.zeros((n_times, n_regions, n_freq))
+    spec = np.zeros((n_times, n_regions, n_freq), dtype= np.float32)
 
     for i, region in enumerate(regions):
         region_cols = [c for c in df.columns if c.startswith(region)]
