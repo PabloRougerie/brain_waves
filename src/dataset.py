@@ -1,18 +1,16 @@
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path.cwd().parent))
+
 import pandas as pd
 import numpy as np
 from src.utils import *
 from src.params import *
 import json
-from src.preprocess import *
+
+from tqdm import tqdm
 
 import torch
-from torch import nn
 from torch.utils.data import Dataset, Subset, DataLoader
 from sklearn.model_selection import StratifiedGroupKFold
-from pytorch_lightning import LightningDataModule, LightningModule
+from pytorch_lightning import LightningDataModule
 
 
 #==========
@@ -22,7 +20,7 @@ from pytorch_lightning import LightningDataModule, LightningModule
 class BrainDataset(Dataset):
     """PyTorch Dataset for EEG spectrograms. Returns (spec, votes) pairs."""
 
-    def __init__(self, metadata: pd.DataFrame, mean: float, std: float):
+    def __init__(self, metadata: pd.DataFrame, mean: float, std: float, augment= False):
         """
         Args:
             metadata: train.csv DataFrame.
@@ -33,6 +31,7 @@ class BrainDataset(Dataset):
         self.metadata = metadata
         self.mean = mean
         self.std = std
+        self.augment = augment
 
     def __len__(self):
         return len(self.metadata)
@@ -49,6 +48,8 @@ class BrainDataset(Dataset):
         #z-score normalization using train-set statistics
         spec = (spec - self.mean) / self.std  # add epsilon if self.std == 0?
 
+        if self.augment:
+            spec = self.xy_masking(spec)
         #convert to tensor
         spec = torch.tensor(spec, dtype=torch.float32)
 
@@ -62,6 +63,24 @@ class BrainDataset(Dataset):
         votes = torch.from_numpy(votes).float()
 
         return spec, votes
+
+    def xy_masking(self, spec, num_masks_x=2, mask_size_x=20,
+                num_masks_y=2, mask_size_y=10):
+
+        spec = spec.copy()
+        _, n_freq, n_time = spec.shape
+
+        # Mask frequency bands
+        for _ in range(num_masks_x):
+            f_start = np.random.randint(0, n_freq - mask_size_x)
+            spec[:, f_start:f_start + mask_size_x, :] = 0
+
+        # Mask time windows
+        for _ in range(num_masks_y):
+            t_start = np.random.randint(0, n_time - mask_size_y)
+            spec[:, :, t_start:t_start + mask_size_y] = 0
+
+        return spec
 
 
 #======================
@@ -165,12 +184,31 @@ class BrainDataModule(LightningDataModule):
         self.mean      = np.array(splits_dict[str(self.n_fold)]["mean"], dtype= np.float32)
         self.std       = np.array(splits_dict[str(self.n_fold)]["std"], dtype= np.float32)
 
+        #check train vs val
+        train_dist = self.metadata.iloc[self.train_idx]["expert_consensus"].value_counts(normalize=True).sort_index()
+        val_dist = self.metadata.iloc[self.val_idx]["expert_consensus"].value_counts(normalize=True).sort_index()
+        print("[Check] Train set distribution:\n", train_dist.to_string())
+        print("[Check] Val distribution:\n", val_dist.to_string())
 
-        self.dataset = BrainDataset(metadata=self.metadata, mean=self.mean, std=self.std)
+        train_patients = self.metadata.iloc[self.train_idx]["patient_id"].nunique()
+        val_patients = self.metadata.iloc[self.val_idx]["patient_id"].nunique()
+        print(f"[Check] Train: {len(self.train_idx)} samples, {train_patients} patients")
+        print(f"[Check] Val:   {len(self.val_idx)} samples, {val_patients} patients")
+
+        train_top = self.metadata.iloc[self.train_idx]["patient_id"].value_counts().head(5)
+        val_top = self.metadata.iloc[self.val_idx]["patient_id"].value_counts().head(5)
+
+        print(f"[Check] Top 5 patients train:\n{train_top.to_string()}")
+        print(f"[Check] Top 5 patients val:\n{val_top.to_string()}")
+
+
+        #create th esame dataset but with
+        self.dataset_train = BrainDataset(metadata=self.metadata, mean=self.mean, std=self.std, augment=True)
+        self.dataset_val   = BrainDataset(metadata=self.metadata, mean=self.mean, std=self.std, augment=False)
 
         if stage in ("fit", None):
-            self.train_ds = Subset(self.dataset, self.train_idx)
-            self.val_ds   = Subset(self.dataset, self.val_idx)
+            self.train_ds = Subset(self.dataset_train, self.train_idx)
+            self.val_ds   = Subset(self.dataset_val, self.val_idx)
 
     def train_dataloader(self) -> DataLoader:
         """Return the training DataLoader (shuffled)."""
