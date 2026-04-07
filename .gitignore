@@ -22,5 +22,11 @@ project_snapshot.md
 system_prompt_v2.md
 top_solutions_summary.md
 
+# Training artifacts
+checkpoints/
+lightning_logs/
+logs/
+*.ckpt
+
 # macOS
 .DS_Store
