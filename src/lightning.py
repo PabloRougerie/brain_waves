@@ -13,7 +13,7 @@ from torchmetrics import KLDivergence
 
 class BrainLightning(LightningModule):
 
-    def __init__(self, model, n_classes= 6, lr=1e-3):
+    def __init__(self, model, n_classes= 6, lr=5e-4):
 
         super().__init__()
         self.save_hyperparameters(ignore= ["model"])
@@ -54,14 +54,16 @@ class BrainLightning(LightningModule):
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr = self.hparams.lr,
+            weight_decay=1e-4
         )
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=50, eta_min=1e-6
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer= optimizer, mode= "min", factor= 0.5, patience= 3
         )
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
+                "monitor": "val_loss",
                 "interval": "epoch",
                 "frequency": 1,
             },
