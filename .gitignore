@@ -18,9 +18,8 @@ data/
 .env
 
 # Project notes / local docs
-project_snapshot.md
-system_prompt_v2.md
-top_solutions_summary.md
+*.md
+!README.md
 
 # Training artifacts
 checkpoints/
