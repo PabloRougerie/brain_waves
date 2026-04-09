@@ -64,8 +64,8 @@ class BrainDataset(Dataset):
 
         return spec, votes
 
-    def xy_masking(self, spec, num_masks_x=2, mask_size_x=20,
-                num_masks_y=2, mask_size_y=10):
+    def xy_masking(self, spec, num_masks_x=1, mask_size_x=10,
+                num_masks_y=1, mask_size_y=30):
 
         spec = spec.copy()
         _, n_freq, n_time = spec.shape
@@ -203,7 +203,7 @@ class BrainDataModule(LightningDataModule):
 
 
         #create th esame dataset but with
-        self.dataset_train = BrainDataset(metadata=self.metadata, mean=self.mean, std=self.std, augment=True)
+        self.dataset_train = BrainDataset(metadata=self.metadata, mean=self.mean, std=self.std, augment=False)
         self.dataset_val   = BrainDataset(metadata=self.metadata, mean=self.mean, std=self.std, augment=False)
 
         if stage in ("fit", None):

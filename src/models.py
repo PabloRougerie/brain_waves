@@ -43,7 +43,7 @@ class BaselineModel(nn.Module):
             ConvBlock(in_channels= 32,
                       out_channels= 64),
             nn.MaxPool2d(kernel_size= 3, stride= 2, padding= 1),
-            nn.Dropout(0.3)
+            nn.Dropout(0.0)
         )
 
         self.block2 = nn.Sequential(
@@ -52,14 +52,17 @@ class BaselineModel(nn.Module):
             ConvBlock(in_channels= 128,
                       out_channels= 256),
             nn.MaxPool2d(kernel_size= 3, stride= 2, padding= 1),
-            nn.Dropout(0.3)
+            nn.Dropout(0.2)
         )
+
+
 
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d((1,1)),
             nn.Flatten(),
+            nn.Dropout(0.0),
             nn.Linear(256, 64),
-            nn.Dropout(0.3),
+            nn.Dropout(0.4),
             nn.Linear(64, self.n_classes)
         )
 
