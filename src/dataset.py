@@ -51,7 +51,7 @@ class BrainDataset(Dataset):
         spec = (spec - self.mean) / self.std  # add epsilon if self.std == 0?
 
         if self.augment:
-            spec = self.xy_masking(spec)
+            spec = spec + np.random.normal(0, 0.05, spec.shape)
         #convert to tensor
         spec = torch.tensor(spec, dtype=torch.float32)
 
