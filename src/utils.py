@@ -4,13 +4,13 @@ import pandas as pd
 
 
 
-def load_spectrogram(df: pd.DataFrame, idx: int) -> np.ndarray:
+def load_spectrogram(base_path, df: pd.DataFrame, idx: int) -> np.ndarray:
     """Load a preprocessed spectrogram array from disk for a given metadata row index."""
     spec_id = df.iloc[idx]["spectrogram_id"]
     subsample_id = df.iloc[idx]["spectrogram_sub_id"]
 
     #load file
-    path = PROCESSED_DIR / f"{spec_id}-{subsample_id}.npy"
+    path = Path(base_path) / f"{spec_id}-{subsample_id}.npy"
     spec = np.load(path)
 
     #impute zero to nan values

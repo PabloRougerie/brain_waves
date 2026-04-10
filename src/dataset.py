@@ -20,15 +20,17 @@ from pytorch_lightning import LightningDataModule
 class BrainDataset(Dataset):
     """PyTorch Dataset for EEG spectrograms. Returns (spec, votes) pairs."""
 
-    def __init__(self, metadata: pd.DataFrame, mean: float, std: float, augment= False):
+    def __init__(self, metadata: pd.DataFrame, spec_dir: Path, mean: float, std: float, augment= False):
         """
         Args:
             metadata: train.csv DataFrame.
+            spec_dir: path to the folder containing .npy spectrogram files.
             mean: train-set mean (computed streaming in DataModule).
             std:  train-set std  (computed streaming in DataModule).
         """
         super().__init__()
         self.metadata = metadata
+        self.spec_dir = spec_dir
         self.mean = mean
         self.std = std
         self.augment = augment
@@ -40,7 +42,7 @@ class BrainDataset(Dataset):
         """Load, transform and return (spec tensor, vote distribution tensor)."""
 
         #load spectrogram from disk
-        spec = load_spectrogram(df=self.metadata, idx=idx)
+        spec = load_spectrogram(base_path=self.spec_dir, df=self.metadata, idx=idx)
 
         #log(1+x) transform to reduce dynamic range — applied before normalization
         spec = np.log1p(spec)  # should this be before norm?
@@ -98,6 +100,7 @@ class BrainDataModule(LightningDataModule):
     def __init__(
         self,
         metadata: pd.DataFrame,
+        spec_dir: Path,
         batch_size: int = 32,
         num_workers: int = 4,
         seed: int = 273,
@@ -107,6 +110,7 @@ class BrainDataModule(LightningDataModule):
         """
         Args:
             metadata:    train.csv DataFrame — needed for both dataset and splits.
+            spec_dir:    path to the folder containing .npy spectrogram files.
             batch_size:  samples per batch.
             num_workers: DataLoader worker processes.
             seed:        random seed for reproducible splits.
@@ -115,6 +119,7 @@ class BrainDataModule(LightningDataModule):
         """
         super().__init__()
         self.metadata = metadata
+        self.spec_dir = spec_dir
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.seed = seed
@@ -128,6 +133,12 @@ class BrainDataModule(LightningDataModule):
         if stage == "test":
             raise NotImplementedError("Test stage is not supported in BrainDataModule.")
 
+        #select the eeg subsample with most vote for each recording
+        self.metadata["total_votes"] = self.metadata[VOTE_COL].sum(axis=1)
+        self.metadata = self.metadata.loc[
+        self.metadata.groupby("eeg_id")["total_votes"].idxmax()
+        ].reset_index(drop=True)
+
         #check if splits at this config are already cached
         cache_path = Path(CACHE_DIR / f"{self.n_split}_at_seed_{self.seed}.json")
         if cache_path.exists():
@@ -140,6 +151,9 @@ class BrainDataModule(LightningDataModule):
         else:
             #no cache data, need to do that split and calculate mean and std on train set
             print(f"[setup] No cache found — computing {self.n_split}-fold split (seed={self.seed})")
+
+
+
 
             sgkf = StratifiedGroupKFold(n_splits=self.n_split, random_state=self.seed, shuffle=True)
             groups = self.metadata["patient_id"]
@@ -161,7 +175,7 @@ class BrainDataModule(LightningDataModule):
                 mean = 0
                 var = 0
                 for idx in tqdm(train_idx, desc=f"  Fold {i+1} mean/std", unit="spec"):
-                    spec = load_spectrogram(self.metadata, idx)
+                    spec = load_spectrogram(base_path=self.spec_dir, df=self.metadata, idx=idx)
                     spec = np.log1p(spec)
                     mean += np.mean(spec)
                     var += np.var(spec)
@@ -202,9 +216,9 @@ class BrainDataModule(LightningDataModule):
         print(f"[Check] Top 5 patients val:\n{val_top.to_string()}")
 
 
-        #create th esame dataset but with
-        self.dataset_train = BrainDataset(metadata=self.metadata, mean=self.mean, std=self.std, augment=False)
-        self.dataset_val   = BrainDataset(metadata=self.metadata, mean=self.mean, std=self.std, augment=False)
+        #create the same dataset but with different augmentation settings
+        self.dataset_train = BrainDataset(metadata=self.metadata, spec_dir=self.spec_dir, mean=self.mean, std=self.std, augment=False)
+        self.dataset_val   = BrainDataset(metadata=self.metadata, spec_dir=self.spec_dir, mean=self.mean, std=self.std, augment=False)
 
         if stage in ("fit", None):
             self.train_ds = Subset(self.dataset_train, self.train_idx)
