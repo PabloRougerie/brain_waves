@@ -26,6 +26,7 @@ checkpoints/
 lightning_logs/
 logs/
 *.ckpt
+learning_curves/
 
 # macOS
 .DS_Store
