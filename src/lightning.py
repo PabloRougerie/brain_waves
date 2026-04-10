@@ -2,6 +2,7 @@
 
 import torch
 from torch import nn
+import numpy as np
 from pytorch_lightning import LightningModule
 from torchmetrics import KLDivergence
 
@@ -13,15 +14,15 @@ from torchmetrics import KLDivergence
 
 class BrainLightning(LightningModule):
 
-    def __init__(self, model, n_classes= 6, lr=1e-3):
+    def __init__(self, model, n_classes= 6, lr=1e-3, mixup= False, mixup_alpha= 0.4):
 
         super().__init__()
         self.save_hyperparameters(ignore= ["model"])
         self.model = model
+        self.mixup = mixup
+        self.mixup_alpha = mixup_alpha
         #the model returns y_pred as log_proba, but y_true is proba. This is expected for the loss
         self.criterion = nn.KLDivLoss(reduction= "batchmean")
-        self.train_kl = KLDivergence(reduction= "mean")
-        self.val_kl = KLDivergence(reduction= "mean")
 
 
     def forward(self, x):
@@ -29,12 +30,19 @@ class BrainLightning(LightningModule):
 
     def training_step(self,batch, batch_idx):
         x, y = batch
+
+        if self.mixup:
+            lam = np.random.beta(self.mixup_alpha, self.mixup_alpha)
+            idx = torch.randperm(x.size(0))
+            x = lam * x + (1 - lam) * x[idx]
+            y = lam * y + (1 - lam) * y[idx]
+
+
         logits = self(x) #logits already returned after log_softmax so as log-space distribution
         loss = self.criterion(logits, y)
-        self.train_kl.update(y, torch.exp(logits)) #check if correct for log
         self.log_dict(
             {"train_loss": loss,
-             "train_kl": self.train_kl},
+             },
             on_step= False, on_epoch= True, prog_bar= True)
         return loss
 
@@ -43,10 +51,8 @@ class BrainLightning(LightningModule):
         x, y = batch
         logits = self(x) #logits already returned after log_softmax so as log-space distribution
         loss = self.criterion(logits, y)
-        self.val_kl.update(y, torch.exp(logits)) #check if correct for log
         self.log_dict(
-            {"val_loss": loss,
-             "val_kl": self.val_kl},
+            {"val_loss": loss},
             on_step= False, on_epoch= True, prog_bar= True)
         return loss
 
@@ -56,14 +62,13 @@ class BrainLightning(LightningModule):
             lr = self.hparams.lr,
             weight_decay=1e-4
         )
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer= optimizer, mode= "min", factor= 0.5, patience= 3
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=50, eta_min=1e-6
         )
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
-                "monitor": "val_loss",
                 "interval": "epoch",
                 "frequency": 1,
             },
@@ -72,11 +77,10 @@ class BrainLightning(LightningModule):
     def on_train_epoch_end(self) -> None:
 
         train_loss = self.trainer.callback_metrics.get("train_loss", float("nan"))
-        train_kl = self.trainer.callback_metrics.get("train_kl", float("nan"))
-        print(f"Epoch {self.current_epoch:03d} - train_loss: {train_loss:.4f} - train_kl: {train_kl:.4f}")
+        lr = self.trainer.optimizers[0].param_groups[0]['lr']
+        print(f"Epoch {self.current_epoch:03d} - train_loss: {train_loss:.4f} - lr: {lr:.2e}")
 
 
     def on_validation_epoch_end(self):
         val_loss = self.trainer.callback_metrics.get("val_loss", float("nan"))
-        val_kl = self.trainer.callback_metrics.get("val_kl", float("nan"))
-        print(f"Epoch {self.current_epoch:03d} | val_loss:   {val_loss:.4f} | val_kl:   {val_kl:.4f}")
+        print(f"Epoch {self.current_epoch:03d} | val_loss:   {val_loss:.4f}")
