@@ -103,7 +103,7 @@ class CNNHybrid(nn.Module):
 
     def __init__(self, n_channels,
                  hidden_dims: list = [16,32,64],
-                 dropout= 0.3,
+                 dropout= 0.0,
                  kernel_size= 3,
                  stride= 1,
                  padding= 1):
@@ -114,9 +114,12 @@ class CNNHybrid(nn.Module):
         #build conv blocks dynamically from hidden_dims
         dims = [n_channels] + hidden_dims
         self.blocks = nn.Sequential(*[
-            ConvBlock(dims[i], dims[i+1], kernel=kernel_size, padding=padding, dropout=dropout)
-            for i in range(len(dims) - 1)
-        ])
+        nn.Sequential(
+        ConvBlock(dims[i], dims[i+1], kernel=kernel_size, padding=padding, dropout=dropout),
+        nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+    )
+    for i in range(len(dims)-1)
+])
 
         self.head = nn.Sequential(
             nn.AdaptiveAvgPool2d((1,1)),
@@ -186,6 +189,7 @@ class HybridModel(nn.Module):
                     cnn_hidden_dims= [16,32,64],
                     n_freq= 100,
                     lstm_hidden_size= 32,
+                    n_layers= 1,
                     dropout= 0,
                     bidirectional = True):
         """
@@ -206,13 +210,13 @@ class HybridModel(nn.Module):
 
         #one LSTM per spectrogram channel, each reading (time, freq) sequences
         self.lstm1 = LSTMHybrid(n_features= n_freq, hidden_size= lstm_hidden_size,
-                                dropout= dropout, bidirectional= bidirectional)
+                                dropout= dropout, bidirectional= bidirectional, num_layers= n_layers)
         self.lstm2 = LSTMHybrid(n_features= n_freq, hidden_size= lstm_hidden_size,
-                                dropout= dropout, bidirectional= bidirectional)
+                                dropout= dropout, bidirectional= bidirectional, num_layers= n_layers)
         self.lstm3 = LSTMHybrid(n_features= n_freq, hidden_size= lstm_hidden_size,
-                                dropout= dropout, bidirectional= bidirectional)
+                                dropout= dropout, bidirectional= bidirectional, num_layers= n_layers)
         self.lstm4 = LSTMHybrid(n_features= n_freq, hidden_size= lstm_hidden_size,
-                                dropout= dropout, bidirectional= bidirectional)
+                                dropout= dropout, bidirectional= bidirectional, num_layers= n_layers)
 
         #output dim: cnn embedding + 4 lstm embeddings (each hidden_size * num_directions)
         bidir = 2 if bidirectional else 1
@@ -241,3 +245,145 @@ class HybridModel(nn.Module):
         logits = self.head(final_embedding)
 
         return nn.functional.log_softmax(logits, dim= 1)
+
+
+#=================
+# SEQUENTIAL MODEL
+# ================
+
+
+class CNNSequential(nn.Module):
+    """
+    CNN backbone for the Sequential model.
+
+    Unlike CNNHybrid, there is no MaxPool between blocks — spatial dims are preserved
+    along the time axis. The frequency dimension is collapsed to 1 via AdaptiveAvgPool2d,
+    leaving a per-timestep feature vector for the downstream LSTM.
+
+    Input shape:  (batch, n_channels, n_freq, n_time)
+    Output shape: (batch, hidden_dims[-1], 1, n_time)
+    """
+
+    def __init__(self, n_channels,
+                 hidden_dims: list = [16,32,64],
+                 dropout= 0.0,
+                 kernel_size= 3,
+                 stride= 1,
+                 padding= 1):
+
+        super().__init__()
+        self.n_channels = n_channels
+
+        #build conv blocks dynamically from hidden_dims
+        dims = [n_channels] + hidden_dims
+        self.blocks = nn.Sequential(*[
+            ConvBlock(dims[i], dims[i+1], kernel=kernel_size, padding=padding, dropout=dropout)
+            for i in range(len(dims)-1)
+        ])
+
+        #collapse frequency dimension to 1, keep time dimension intact
+        self.pool = nn.AdaptiveAvgPool2d((1, None))
+
+    def forward(self, x):
+        # x: (batch, n_channels, n_freq, n_time)
+        x = self.blocks(x)     # → (batch, hidden_dims[-1], n_freq, n_time)
+        x = self.pool(x)       # → (batch, hidden_dims[-1], 1, n_time)
+        return x
+
+
+class LSTMSequential(nn.Module):
+    """
+    LSTM encoder for the Sequential model.
+
+    Identical in structure to LSTMHybrid — takes a sequence and returns
+    the last hidden state.
+
+    Input shape:  (batch, seq_len, n_features)
+    Output shape: (batch, hidden_size * num_directions)
+    """
+
+    def __init__(self, n_features, hidden_size, num_layers= 1, dropout= 0.0, bidirectional= True):
+
+        super().__init__()
+        self.bidirectional = bidirectional
+
+        # note: LSTM dropout only applies between layers — no effect with num_layers=1
+        self.lstm = nn.LSTM(input_size= n_features,
+                            hidden_size= hidden_size,
+                            num_layers= num_layers,
+                            batch_first= True,
+                            dropout= dropout if num_layers > 1 else 0.0,
+                            bidirectional= bidirectional)
+
+    def forward(self, x):
+        # x: (batch, seq_len, n_features)
+        # h_n: (num_layers * num_directions, batch, hidden_size) — last hidden state
+        # c_n: last cell state (not used)
+        _, (h_n, c_n) = self.lstm(x)
+
+        if self.bidirectional:
+            #concat last forward and last backward hidden states
+            last = torch.cat([h_n[-2], h_n[-1]], dim=1)
+        else:
+            last = h_n[-1]
+
+        return last  # shape: (batch, hidden_size * num_directions)
+
+
+class SequentialModel(nn.Module):
+    """
+    Sequential CNN → LSTM model
+
+    The CNN extracts per-timestep feature vectors (collapsing frequency),
+    then a single LSTM reads the sequence and produces a fixed-size embedding
+    for classification.
+
+    Input shape:  (batch, n_channels, n_freq, n_time)
+    Output:       log-softmax over n_classes
+    """
+
+    def __init__(self, n_channels,
+                    n_classes,
+                    cnn_hidden_dims= [16,32,64],
+                    lstm_hidden_size= 32,
+                    n_layers= 1,
+                    dropout= 0,
+                    bidirectional= True):
+        """
+        Args:
+            n_channels:       number of input channels (EEG regions)
+            n_classes:        number of output classes
+            cnn_hidden_dims:  channel progression for CNNSequential
+            lstm_hidden_size: LSTM hidden size
+            n_layers:         number of LSTM layers
+            dropout:          dropout rate (shared across CNN and LSTM)
+            bidirectional:    whether the LSTM is bidirectional
+        """
+        super().__init__()
+
+        #CNN extracts (batch, hidden_dims[-1], 1, n_time) feature maps
+        self.cnn = CNNSequential(n_channels=n_channels,
+                                 hidden_dims=cnn_hidden_dims,
+                                 dropout=dropout)
+
+        #single LSTM reads the time sequence of CNN feature vectors
+        self.lstm = LSTMSequential(n_features=cnn_hidden_dims[-1], hidden_size=lstm_hidden_size,
+                                   dropout=dropout, bidirectional=bidirectional, num_layers=n_layers)
+
+        #output dim: lstm last hidden state (hidden_size * num_directions)
+        bidir = 2 if bidirectional else 1
+        output_dims = bidir * lstm_hidden_size
+        self.head = nn.Sequential(
+            nn.Linear(output_dims, 64),
+            nn.Dropout(dropout),
+            nn.Linear(64, n_classes)
+        )
+
+    def forward(self, x):
+        # x: (batch, n_channels, n_freq, n_time)
+        x = self.cnn(x)              # → (batch, hidden_dims[-1], 1, n_time)
+        x = x.squeeze(2)             # → (batch, hidden_dims[-1], n_time)  — squeeze freq dim only
+        x = x.permute(0, 2, 1)      # → (batch, n_time, hidden_dims[-1])  — LSTM expects (batch, seq, features)
+        x = self.lstm(x)             # → (batch, hidden_size * num_directions)
+        x = self.head(x)             # → (batch, n_classes)
+        return nn.functional.log_softmax(x, dim=1)
