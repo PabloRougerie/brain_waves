@@ -43,7 +43,7 @@ class BaselineModel(nn.Module):
             ConvBlock(in_channels= 32,
                       out_channels= 64),
             nn.MaxPool2d(kernel_size= 3, stride= 2, padding= 1),
-            nn.Dropout(0.0)
+            nn.Dropout(0.3)
         )
 
         self.block2 = nn.Sequential(
@@ -52,7 +52,7 @@ class BaselineModel(nn.Module):
             ConvBlock(in_channels= 128,
                       out_channels= 256),
             nn.MaxPool2d(kernel_size= 3, stride= 2, padding= 1),
-            nn.Dropout(0.2)
+            nn.Dropout(0.3)
         )
 
 
@@ -62,7 +62,7 @@ class BaselineModel(nn.Module):
             nn.Flatten(),
             nn.Dropout(0.0),
             nn.Linear(256, 64),
-            nn.Dropout(0.4),
+            nn.Dropout(0.5),
             nn.Linear(64, self.n_classes)
         )
 
@@ -72,3 +72,38 @@ class BaselineModel(nn.Module):
         x = self.head(x)
 
         return nn.functional.log_softmax(x, dim= 1)
+
+
+# CNN for Hybrid Model
+
+class CNN(nn.Module):
+
+    def __init__(self, n_channels,
+                 n_classes,
+                 hidden_dims: list = [16,32,64],
+                 dropout= 0.3,
+                 kernel_size= 3,
+                 stride= 1,
+                 padding= 1):
+
+        super().__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        dims = [n_channels] + hidden_dims
+
+        self.blocks = nn.Sequential(*[ConvBlock(dims[i],
+                                                dims[i+1],
+                                                kernel= kernel_size,
+                                                padding= padding) for i in range(len(dims) -1)
+                                      ])
+
+        self.head = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1,1)),
+            nn.Flatten(),
+        )
+
+    def forward(self,x):
+
+        x = self.blocks(x)
+        x = self.head(x)
+        return x #should return (32,) embedding of spatial info
