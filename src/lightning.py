@@ -13,7 +13,7 @@ from torchmetrics import KLDivergence
 
 class BrainLightning(LightningModule):
 
-    def __init__(self, model, n_classes= 6, lr=5e-4):
+    def __init__(self, model, n_classes= 6, lr=1e-3):
 
         super().__init__()
         self.save_hyperparameters(ignore= ["model"])
