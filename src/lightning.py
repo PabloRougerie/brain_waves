@@ -14,7 +14,7 @@ from torchmetrics import KLDivergence
 
 class BrainLightning(LightningModule):
 
-    def __init__(self, model, n_classes= 6, lr=1e-3, mixup= False, mixup_alpha= 0.4):
+    def __init__(self, model, n_classes= 6, lr=1e-3, mixup= False, mixup_alpha= 0.4, scheduler= True, t_max= 50):
 
         super().__init__()
         self.save_hyperparameters(ignore= ["model"])
@@ -23,6 +23,8 @@ class BrainLightning(LightningModule):
         self.mixup_alpha = mixup_alpha
         #the model returns y_pred as log_proba, but y_true is proba. This is expected for the loss
         self.criterion = nn.KLDivLoss(reduction= "batchmean")
+        self.scheduler = scheduler
+        self.t_max = t_max
 
 
     def forward(self, x):
@@ -57,22 +59,31 @@ class BrainLightning(LightningModule):
         return loss
 
     def configure_optimizers(self):
+
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr = self.hparams.lr,
             weight_decay=1e-4
         )
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer, T_max=50, eta_min=1e-6
-        )
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "interval": "epoch",
-                "frequency": 1,
-            },
-        }
+
+        if self.scheduler:
+
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max= self.t_max, eta_min=1e-6
+            )
+            return {
+                "optimizer": optimizer,
+                "lr_scheduler": {
+                    "scheduler": scheduler,
+                    "interval": "epoch",
+
+                },
+            }
+
+        else:
+            return {
+                "optimizer": optimizer
+            }
 
     def on_train_epoch_end(self) -> None:
 
