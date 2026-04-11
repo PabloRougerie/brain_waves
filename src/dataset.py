@@ -106,6 +106,7 @@ class BrainDataModule(LightningDataModule):
         seed: int = 273,
         n_split: int = 5,
         n_fold: int = 0,
+        min_votes = 7
     ):
         """
         Args:
@@ -125,6 +126,7 @@ class BrainDataModule(LightningDataModule):
         self.seed = seed
         self.n_split = n_split
         self.n_fold = n_fold
+        self.min_votes = min_votes
 
     def setup(self, stage: str = None):
         """Compute or load splits, then instantiate train/val subsets."""
@@ -139,8 +141,14 @@ class BrainDataModule(LightningDataModule):
         self.metadata.groupby("eeg_id")["total_votes"].idxmax()
         ].reset_index(drop=True)
 
+
+        #filter on min_votes
+        before_filtering = len(self.metadata)
+        self.metadata = self.metadata[self.metadata["total_votes"] >= self.min_votes].reset_index(drop= True)
+        print(f"Filtered by {self.min_votes}: {len(self.metadata)}/{before_filtering} kept")
+
         #check if splits at this config are already cached
-        cache_path = Path(CACHE_DIR / f"{self.n_split}_at_seed_{self.seed}.json")
+        cache_path = Path(CACHE_DIR / f"{self.n_split}_at_seed_{self.seed}_min_vote_{self.min_votes}.json")
         if cache_path.exists():
 
             print(f"[setup] Loading splits from cache: {cache_path}")
