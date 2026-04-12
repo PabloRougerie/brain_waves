@@ -387,3 +387,54 @@ class SequentialModel(nn.Module):
         x = self.lstm(x)             # → (batch, hidden_size * num_directions)
         x = self.head(x)             # → (batch, n_classes)
         return nn.functional.log_softmax(x, dim=1)
+
+
+
+#==============
+# Optuna model
+#==============
+
+class OptunaModel(nn.Module):
+
+    def __init__(self, n_channels, n_classes, hidden_dims, kernel_size, dropout):
+
+        super().__init__()
+
+        blocks = []
+
+        dims = [n_channels] + hidden_dims
+        #construct several VGG-like blocks
+        for i in range(0,len(dims) - 2, 2):
+
+            blocks.append(
+                nn.Sequential(ConvBlock(in_channels= dims[i], out_channels= dims[i+1],
+                                        dropout= 0,
+                                        kernel= kernel_size,
+                                        padding= kernel_size // 2,
+                                        stride= 1),
+                              ConvBlock(in_channels= dims[i+1], out_channels= dims[i+2],
+                                        dropout= 0,
+                                        kernel= kernel_size,
+                                        padding= kernel_size // 2,
+                                        stride= 1),
+                              nn.MaxPool2d(kernel_size= 3, stride= 2, padding= 1),
+                              nn.Dropout2d(dropout)
+                              ) )
+
+        self.backbone = nn.Sequential(*blocks)
+
+        self.head = nn.Sequential(
+                        nn.AdaptiveAvgPool2d((1,1)),
+                        nn.Flatten(),
+                        nn.Linear(dims[-1], 64),
+                        nn.Dropout(dropout),
+                        nn.Linear(64, n_classes)
+        )
+
+
+    def forward(self,   x):
+
+        x = self.backbone(x)
+        x = self.head(x)
+        x = nn.functional.log_softmax(x, dim= 1)
+        return x

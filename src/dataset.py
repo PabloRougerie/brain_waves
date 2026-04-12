@@ -106,7 +106,8 @@ class BrainDataModule(LightningDataModule):
         seed: int = 273,
         n_split: int = 5,
         n_fold: int = 0,
-        min_votes = 7
+        min_votes = 1,
+        verbose = True
     ):
         """
         Args:
@@ -127,6 +128,7 @@ class BrainDataModule(LightningDataModule):
         self.n_split = n_split
         self.n_fold = n_fold
         self.min_votes = min_votes
+        self.verbose = verbose
 
     def setup(self, stage: str = None):
         """Compute or load splits, then instantiate train/val subsets."""
@@ -145,7 +147,9 @@ class BrainDataModule(LightningDataModule):
         #filter on min_votes
         before_filtering = len(self.metadata)
         self.metadata = self.metadata[self.metadata["total_votes"] >= self.min_votes].reset_index(drop= True)
-        print(f"Filtered by {self.min_votes}: {len(self.metadata)}/{before_filtering} kept")
+
+        if self.verbose:
+            print(f"Filtered by {self.min_votes}: {len(self.metadata)}/{before_filtering} kept")
 
         #check if splits at this config are already cached
         cache_path = Path(CACHE_DIR / f"{self.n_split}_at_seed_{self.seed}_min_vote_{self.min_votes}.json")
@@ -209,19 +213,23 @@ class BrainDataModule(LightningDataModule):
         #check train vs val
         train_dist = self.metadata.iloc[self.train_idx]["expert_consensus"].value_counts(normalize=True).sort_index()
         val_dist = self.metadata.iloc[self.val_idx]["expert_consensus"].value_counts(normalize=True).sort_index()
-        print("[Check] Train set distribution:\n", train_dist.to_string())
-        print("[Check] Val distribution:\n", val_dist.to_string())
+        if self.verbose:
+            print("[Check] Train set distribution:\n", train_dist.to_string())
+            print("[Check] Val distribution:\n", val_dist.to_string())
 
         train_patients = self.metadata.iloc[self.train_idx]["patient_id"].nunique()
         val_patients = self.metadata.iloc[self.val_idx]["patient_id"].nunique()
-        print(f"[Check] Train: {len(self.train_idx)} samples, {train_patients} patients")
-        print(f"[Check] Val:   {len(self.val_idx)} samples, {val_patients} patients")
+
+        if self.verbose:
+            print(f"[Check] Train: {len(self.train_idx)} samples, {train_patients} patients")
+            print(f"[Check] Val:   {len(self.val_idx)} samples, {val_patients} patients")
 
         train_top = self.metadata.iloc[self.train_idx]["patient_id"].value_counts().head(5)
         val_top = self.metadata.iloc[self.val_idx]["patient_id"].value_counts().head(5)
 
-        print(f"[Check] Top 5 patients train:\n{train_top.to_string()}")
-        print(f"[Check] Top 5 patients val:\n{val_top.to_string()}")
+        if self.verbose:
+            print(f"[Check] Top 5 patients train:\n{train_top.to_string()}")
+            print(f"[Check] Top 5 patients val:\n{val_top.to_string()}")
 
 
         #create the same dataset but with different augmentation settings

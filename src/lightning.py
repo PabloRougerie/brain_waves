@@ -14,7 +14,11 @@ from torchmetrics import KLDivergence
 
 class BrainLightning(LightningModule):
 
-    def __init__(self, model, n_classes= 6, lr=1e-3, mixup= False, mixup_alpha= 0.4, scheduler= True, t_max= 50):
+    def __init__(self, model,
+                 n_classes= 6, lr=1e-3, mixup= False,
+                 mixup_alpha= 0.4, scheduler= True, t_max= 50,
+                 weight_decay = 1e-4,
+                 verbose = True):
 
         super().__init__()
         self.save_hyperparameters(ignore= ["model"])
@@ -25,6 +29,8 @@ class BrainLightning(LightningModule):
         self.criterion = nn.KLDivLoss(reduction= "batchmean")
         self.scheduler = scheduler
         self.t_max = t_max
+        self.verbose = verbose
+
 
 
     def forward(self, x):
@@ -63,7 +69,7 @@ class BrainLightning(LightningModule):
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr = self.hparams.lr,
-            weight_decay=1e-4
+            weight_decay= self.hparams.weight_decay
         )
 
         if self.scheduler:
@@ -89,9 +95,13 @@ class BrainLightning(LightningModule):
 
         train_loss = self.trainer.callback_metrics.get("train_loss", float("nan"))
         lr = self.trainer.optimizers[0].param_groups[0]['lr']
-        print(f"Epoch {self.current_epoch:03d} - train_loss: {train_loss:.4f} - lr: {lr:.2e}")
+
+        if self.verbose:
+            print(f"Epoch {self.current_epoch:03d} - train_loss: {train_loss:.4f} - lr: {lr:.2e}")
 
 
     def on_validation_epoch_end(self):
         val_loss = self.trainer.callback_metrics.get("val_loss", float("nan"))
+
+
         print(f"Epoch {self.current_epoch:03d} | val_loss:   {val_loss:.4f}")
