@@ -30,3 +30,7 @@ learning_curves/
 
 # macOS
 .DS_Store
+
+# Local files
+*.docx
+*.db
