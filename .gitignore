@@ -34,3 +34,4 @@ learning_curves/
 # Local files
 *.docx
 *.db
+.DS_Store
