@@ -18,6 +18,7 @@ def instantiate_model(path):
     
     #get model
     model = lit_model.model
+    model.cpu()
     
     return model 
 
@@ -67,17 +68,41 @@ def measure_latency(model, iterations):
     return latencies
 
 
-def model_efficience_report(path= None, model= None, iterations=200):
+def evaluate_model(model, datamodule):
+    
+    model.eval()
+    model.cpu()
+    criterion = torch.nn.KLDivLoss(reduction="batchmean")
+    
+    losses = []
+    with torch.no_grad():
+        for x, y in datamodule.val_dataloader():
+            x, y = x.cpu(), y.cpu()
+            logits = model(x)
+            loss = criterion(logits,y)
+            losses.append(loss)
+            
+    return np.mean(losses)
+            
 
-    if not (bool(path) ^ bool(model)): 
+
+def model_efficience_report(path= None, model= None, datamodule= None, iterations=5000):
+
+    print("load model")
+    if (path is None) == (model is None): 
         raise ValueError("provide either one path or one model, not both, not neither")
         
     if path:
         model = instantiate_model(path)
     
     
+    print("calculate size and latency")
     n_total, n_trainable, size_all_mb = get_size_and_params(model)
     latencies = measure_latency(model, iterations)
+    
+    if datamodule:
+        print("calculate model inference score")
+        score = evaluate_model(model, datamodule)
 
     sep = "-" * 35
     print(f"\n{sep}")
@@ -89,9 +114,11 @@ def model_efficience_report(path= None, model= None, iterations=200):
     print(sep)
     print(f"  Median latency (ms): {np.median(latencies) * 1000:.2f}")
     print(f"  Max latency (ms):    {np.max(latencies) * 1000:.2f}")
+    print(sep)
+    print(f"  KL score: {score :.4f}")
     print(f"{sep}\n")
     
-    return model
+    return size_all_mb, np.median(latencies)*1000, score
     
     
     
