@@ -9,7 +9,14 @@ from src.models import OptunaModel
 from src.params import BEST_MODEL_PARAMS
 
 def instantiate_model(path):
+    """Load a BrainLightning checkpoint and return the inner OptunaModel on CPU.
     
+    Args:
+        path: Path to the .ckpt checkpoint file.
+    
+    Returns:
+        OptunaModel with loaded weights, in eval-ready state on CPU.
+    """
     #instantiate model with correct architecture
     best_model = OptunaModel(**BEST_MODEL_PARAMS)
     
@@ -24,10 +31,22 @@ def instantiate_model(path):
 
     
 def get_size_and_params(model):
+    """Compute parameter counts and in-memory size of a float model.
+
+    Args:
+        model: A torch.nn.Module (non-quantized).
+
+    Returns:
+        Tuple (n_total, n_trainable, size_mb):
+            n_total      -- total number of parameters
+            n_trainable  -- number of trainable parameters
+            size_mb      -- model size in MB (parameters + buffers)
+    """
     param_size = 0
     buffer_size = 0
     n_trainable = 0
     n_total = 0
+    
     
     for param in model.parameters():
         n_total += param.numel()
@@ -41,11 +60,39 @@ def get_size_and_params(model):
     
     
     return n_total, n_trainable, size_all_mb
+
+
+def get_size_quantization(model):
+    """Measure the on-disk size of a quantized model by saving its state_dict.
+
+    Uses /tmp as a temporary write location. More accurate than counting
+    parameter bytes for quantized models since dtypes vary per layer.
+
+    Args:
+        model: A quantized torch.nn.Module.
+
+    Returns:
+        File size in MB.
+    """
+    torch.save(model.state_dict(), "/tmp/quant_model.pt") 
+    size_quant_mb = Path("/tmp/quant_model.pt").stat().st_size / 1024**2
+    return size_quant_mb
+    
     
         
     
 def measure_latency(model, iterations):
-    
+    """Measure per-inference latency on CPU with a dummy input.
+
+    Runs 10 warmup iterations before recording, to avoid cold-start bias.
+
+    Args:
+        model:      A torch.nn.Module (float or quantized).
+        iterations: Number of timed inference runs.
+
+    Returns:
+        List of latencies in seconds (length = iterations).
+    """
     #get to eval model
     model.eval()
     
@@ -69,7 +116,15 @@ def measure_latency(model, iterations):
 
 
 def evaluate_model(model, datamodule):
-    
+    """Compute mean KL divergence loss on the validation set.
+
+    Args:
+        model:      A torch.nn.Module producing log-probabilities.
+        datamodule: A BrainDataModule with a configured val_dataloader.
+
+    Returns:
+        Mean KLDivLoss (float) over the full validation set.
+    """
     model.eval()
     model.cpu()
     criterion = torch.nn.KLDivLoss(reduction="batchmean")
@@ -86,15 +141,27 @@ def evaluate_model(model, datamodule):
             
 
 
-def model_efficience_report(path= None, model= None, datamodule= None, iterations=5000):
+def model_efficience_report(path=None, model=None, datamodule=None, iterations=5000):
+    """Print and return efficiency metrics for a standard (non-quantized) model.
 
+    Exactly one of `path` or `model` must be provided.
+
+    Args:
+        path:       Path to a .ckpt checkpoint file (optional).
+        model:      An already-instantiated OptunaModel (optional).
+        datamodule: BrainDataModule for KL score evaluation (optional).
+        iterations: Number of latency measurement iterations (default 5000).
+
+    Returns:
+        Tuple (size_mb, median_latency_ms, score) where score is None if
+        no datamodule was provided.
+    """
     print("load model")
     if (path is None) == (model is None): 
         raise ValueError("provide either one path or one model, not both, not neither")
         
     if path:
         model = instantiate_model(path)
-    
     
     print("calculate size and latency")
     n_total, n_trainable, size_all_mb = get_size_and_params(model)
@@ -103,6 +170,8 @@ def model_efficience_report(path= None, model= None, datamodule= None, iteration
     if datamodule:
         print("calculate model inference score")
         score = evaluate_model(model, datamodule)
+    else:
+        score = None
 
     sep = "-" * 35
     print(f"\n{sep}")
@@ -115,11 +184,48 @@ def model_efficience_report(path= None, model= None, datamodule= None, iteration
     print(f"  Median latency (ms): {np.median(latencies) * 1000:.2f}")
     print(f"  Max latency (ms):    {np.max(latencies) * 1000:.2f}")
     print(sep)
-    print(f"  KL score: {score :.4f}")
+    print(f"  KL score: {score:.4f}" if score is not None else "  KL score: N/A")
     print(f"{sep}\n")
     
     return size_all_mb, np.median(latencies)*1000, score
     
+    
+    
+def quantized_model_efficience_report(model, datamodule=None, iterations=5000):
+    """Print and return efficiency metrics for a quantized model.
+
+    Size is measured via on-disk serialization to account for mixed dtypes.
+
+    Args:
+        model:      A quantized torch.nn.Module (e.g. output of convert()).
+        datamodule: BrainDataModule for KL score evaluation (optional).
+        iterations: Number of latency measurement iterations (default 5000).
+
+    Returns:
+        Tuple (size_mb, median_latency_ms, score) where score is None if
+        no datamodule was provided.
+    """
+    size = get_size_quantization(model)
+    latencies = measure_latency(model, iterations)
+    if datamodule:
+        print("calculate model inference score")
+        score = evaluate_model(model, datamodule)
+    else: 
+        score = None
+    
+    sep = "-" * 35
+    print(f"\n{sep}")
+    print(f"  Model Efficiency Report Quantization")
+    print(sep)
+    print(f"  Model size (MB):     {size:.3f}")
+    print(sep)
+    print(f"  Median latency (ms): {np.median(latencies) * 1000:.2f}")
+    print(f"  Max latency (ms):    {np.max(latencies) * 1000:.2f}")
+    print(sep)
+    print(f"  KL score: {score:.4f}" if score is not None else "  KL score: N/A")
+    print(f"{sep}\n")
+    
+    return size, np.median(latencies)*1000, score
     
     
 
