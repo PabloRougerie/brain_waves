@@ -79,6 +79,8 @@ def get_size_quantization(model):
     return size_quant_mb
     
     
+
+    
         
     
 def measure_latency(model, iterations):
@@ -228,8 +230,43 @@ def quantized_model_efficience_report(model, datamodule=None, iterations=5000):
     return size, np.median(latencies)*1000, score
     
     
+          
+def onnx_size_mb(path):
+    return Path(path).stat().st_size / 1024**2
 
-          
-          
+def onnx_latency(session, iterations= 5000):
+    dummy = np.random.randn(1,4,100,25).astype(np.float32)
+    
+    #warmup
+    for _ in range(10):
+        session.run(["class_logits"], {"spectrogram": dummy})
+        
+    latencies = []
+    
+    for _ in range(iterations):
+        t0 = time.perf_counter()
+        session.run(["class_logits"], {"spectrogram": dummy})
+        latencies.append(time.perf_counter() - t0)
+    
+    return np.median(latencies) *1000, np.max(latencies)*1000
+
+
+def onnx_kl_score(session, datamodule):
+    criterion = torch.nn.KLDivLoss(reduction = "batchmean")
+    losses = [ ]
+    
+    for x, y in datamodule.val_dataloader():
+        x_np = x.numpy().astype(np.float32)
+        logits = session.run(["class_logits"], {"spectrogram": x_np})
+        logits_t = torch.tensor(logits)
+        loss = criterion(logits_t, y).item()
+        losses.append(loss)
+        
+    return np.mean(losses) 
+                                
+        
+    
+        
+    
     
     
