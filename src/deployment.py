@@ -232,41 +232,105 @@ def quantized_model_efficience_report(model, datamodule=None, iterations=5000):
     
           
 def onnx_size_mb(path):
-    return Path(path).stat().st_size / 1024**2
+    """Return the file size of an ONNX model in MB.
 
-def onnx_latency(session, iterations= 5000):
-    dummy = np.random.randn(1,4,100,25).astype(np.float32)
-    
-    #warmup
+    Args:
+        path: Path to the .onnx file.
+
+    Returns:
+        File size in MB.
+    """
+    path = Path(path)
+    total = path.stat().st_size
+    for f in path.parent.glob(path.stem + "*"):
+        if f != path:
+            total += f.stat().st_size
+    return total / 1024**2 
+
+
+def onnx_latency(session, iterations=5000):
+    """Measure per-inference latency of an ONNX session with a dummy input.
+
+    Runs 10 warmup iterations before recording, to avoid cold-start bias.
+
+    Args:
+        session:    An onnxruntime.InferenceSession.
+        iterations: Number of timed inference runs.
+
+    Returns:
+        Tuple (median_latency_ms, max_latency_ms).
+    """
+    dummy = np.random.randn(1, 4, 100, 25).astype(np.float32)
+
     for _ in range(10):
         session.run(["class_logits"], {"spectrogram": dummy})
-        
+
     latencies = []
-    
     for _ in range(iterations):
         t0 = time.perf_counter()
         session.run(["class_logits"], {"spectrogram": dummy})
         latencies.append(time.perf_counter() - t0)
-    
-    return np.median(latencies) *1000, np.max(latencies)*1000
+
+    return np.median(latencies) * 1000, np.max(latencies) * 1000
 
 
 def onnx_kl_score(session, datamodule):
-    criterion = torch.nn.KLDivLoss(reduction = "batchmean")
-    losses = [ ]
-    
+    """Compute mean KL divergence loss on the validation set via ONNX inference.
+
+    Args:
+        session:    An onnxruntime.InferenceSession producing log-probabilities.
+        datamodule: A BrainDataModule with a configured val_dataloader.
+
+    Returns:
+        Mean KLDivLoss (float) over the full validation set.
+    """
+    criterion = torch.nn.KLDivLoss(reduction="batchmean")
+    losses = []
+
     for x, y in datamodule.val_dataloader():
         x_np = x.numpy().astype(np.float32)
         logits = session.run(["class_logits"], {"spectrogram": x_np})
-        logits_t = torch.tensor(logits)
+        logits_t = torch.tensor(logits[0])  # session.run returns a list of arrays
         loss = criterion(logits_t, y).item()
         losses.append(loss)
-        
-    return np.mean(losses) 
-                                
-        
-    
-        
+
+    return np.mean(losses)
+
+
+def onnx_model_efficience_report(path, session, datamodule=None, iterations=5000):
+    """Print and return efficiency metrics for an ONNX model.
+
+    Args:
+        path:       Path to the .onnx file (for size measurement).
+        session:    An onnxruntime.InferenceSession for the same model.
+        datamodule: BrainDataModule for KL score evaluation (optional).
+        iterations: Number of latency measurement iterations (default 5000).
+
+    Returns:
+        Tuple (size_mb, median_latency_ms, score) where score is None if
+        no datamodule was provided.
+    """
+    size = onnx_size_mb(path)
+    latency_median, latency_max = onnx_latency(session, iterations)
+
+    if datamodule:
+        score = onnx_kl_score(session, datamodule)
+    else:
+        score = None
+
+    sep = "-" * 35
+    print(f"\n{sep}")
+    print(f"  Model Efficiency Report ONNX")
+    print(sep)
+    print(f"  Model size (MB):     {size:.3f}")
+    print(sep)
+    print(f"  Median latency (ms): {latency_median:.2f}")
+    print(f"  Max latency (ms):    {latency_max:.2f}")
+    print(sep)
+    print(f"  KL score: {score:.4f}" if score is not None else "  KL score: N/A")
+    print(f"{sep}\n")
+
+    return size, latency_median, score
     
     
     
