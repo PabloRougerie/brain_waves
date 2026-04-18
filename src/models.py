@@ -225,13 +225,15 @@ class HybridModel(nn.Module):
 
         self.cnn = CNNHybrid(n_channels=n_channels, hidden_dims=cnn_hidden_dims, dropout=dropout)
 
-        # one LSTM per spectrogram channel, each reading (time, freq) sequences
-        lstm_kwargs = dict(n_features=n_freq, hidden_size=lstm_hidden_size,
-                           dropout=dropout, bidirectional=bidirectional, num_layers=n_layers)
-        self.lstm1 = LSTMHybrid(**lstm_kwargs)
-        self.lstm2 = LSTMHybrid(**lstm_kwargs)
-        self.lstm3 = LSTMHybrid(**lstm_kwargs)
-        self.lstm4 = LSTMHybrid(**lstm_kwargs)
+        #one LSTM per spectrogram channel, each reading (time, freq) sequences
+        self.lstm1 = LSTMHybrid(n_features= n_freq, hidden_size= lstm_hidden_size,
+                                dropout= dropout, bidirectional= bidirectional, num_layers= n_layers)
+        self.lstm2 = LSTMHybrid(n_features= n_freq, hidden_size= lstm_hidden_size,
+                                dropout= dropout, bidirectional= bidirectional, num_layers= n_layers)
+        self.lstm3 = LSTMHybrid(n_features= n_freq, hidden_size= lstm_hidden_size,
+                                dropout= dropout, bidirectional= bidirectional, num_layers= n_layers)
+        self.lstm4 = LSTMHybrid(n_features= n_freq, hidden_size= lstm_hidden_size,
+                                dropout= dropout, bidirectional= bidirectional, num_layers= n_layers)
 
         bidir       = 2 if bidirectional else 1
         output_dims = cnn_hidden_dims[-1] + 4 * bidir * lstm_hidden_size
@@ -437,6 +439,7 @@ class OptunaModel(nn.Module):
         dims   = [n_channels] + hidden_dims
 
         # build VGG-like blocks: pairs of ConvBlocks + MaxPool + Dropout2d
+        #it goes by step 2 across dims to make sure in channels and out channels match and that it's appended by blocks of 2 convblocks
         for i in range(0, len(dims) - 2, 2):
             blocks.append(nn.Sequential(
                 ConvBlock(
