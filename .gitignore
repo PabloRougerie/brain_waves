@@ -9,23 +9,47 @@ wheels/
 # Virtual environments
 .venv
 
-
-#data
-data/
+# Data — raw Kaggle files and large processed arrays
+# Use data/* (not data/) so that exceptions on specific files work
+data/*
 !data/cache/
+!data/train.csv
+!data/rating_per_patient.csv
+!data/pruning_results.csv
+!data/export_results.csv
+!data/quantize_results.csv
 
-#secrets
+# Secrets
 .env
 
 # Project notes / local docs
 *.md
 !README.md
 
-# Training artifacts
+# Training artifacts — exclude everything by default
 checkpoints/
 lightning_logs/
 logs/
 *.ckpt
+
+# Checkpoints to keep: best model, pruned model, ONNX exports
+!notebooks/checkpoints/
+!notebooks/checkpoints/final/
+!notebooks/checkpoints/final/epoch=26-val_loss=0.677.ckpt
+!notebooks/checkpoints/pruning_0.4/
+!notebooks/checkpoints/pruning_0.4/epoch=06-val_loss=0.686.ckpt
+!notebooks/checkpoints/export/
+!notebooks/checkpoints/export/**
+
+# Jupyter auto-save directories
+**/.ipynb_checkpoints/
+
+# Optuna checkpoint subdirs (contain best_trial.json, not covered by *.ckpt)
+notebooks/checkpoints/optuna/
+notebooks/checkpoints/optuna2/
+
+# Results figures (referenced by README and project summary)
+# learning_curves/ — kept local (training noise, not needed for portfolio)
 learning_curves/
 
 # macOS
@@ -34,4 +58,3 @@ learning_curves/
 # Local files
 *.docx
 *.db
-.DS_Store
