@@ -33,5 +33,19 @@ BEST_TRAINING_PARAMS = {
         "t_max": 35,
     
 }
+
+BEST_WEIGHTS_CHECKPOINT = "epoch=26-val_loss=0.677.ckpt"
+BEST_WEIGHTS_PATH = CHECKPOINTS_DIR / "final" / BEST_WEIGHTS_CHECKPOINT
+
+PRUNER_IGNORED_LAYERS_NAMES = ["backbone[0][0].block[0]", "head"]
+
+FUSE_LIST = [
+    ["model.backbone.0.0.block.0", "model.backbone.0.0.block.1", "model.backbone.0.0.block.2"],
+    ["model.backbone.0.1.block.0", "model.backbone.0.1.block.1", "model.backbone.0.1.block.2"],
+    ["model.backbone.1.0.block.0", "model.backbone.1.0.block.1", "model.backbone.1.0.block.2"],
+    ["model.backbone.1.1.block.0", "model.backbone.1.1.block.1", "model.backbone.1.1.block.2"],
+    ["model.backbone.2.0.block.0", "model.backbone.2.0.block.1", "model.backbone.2.0.block.2"],
+    ["model.backbone.2.1.block.0", "model.backbone.2.1.block.1", "model.backbone.2.1.block.2"],
+]
     
 

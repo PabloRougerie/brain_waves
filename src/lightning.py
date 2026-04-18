@@ -4,7 +4,6 @@ import torch
 from torch import nn
 import numpy as np
 from pytorch_lightning import LightningModule
-from torchmetrics import KLDivergence
 
 
 
