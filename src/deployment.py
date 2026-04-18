@@ -258,7 +258,12 @@ class QuantWrapperCustom(nn.Module):
         self.model = model
         self.dequant = torch.ao.quantization.DeQuantStub()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run quantized forward pass.
+
+        The log_softmax is applied after dequantization to stay in float32,
+        since quantized::log_softmax is not supported on CPU.
+        """
         x = self.quant(x)
         x = self.model.backbone(x)
         x = self.model.head(x)
@@ -289,6 +294,12 @@ class BrainCalibrationReader(CalibrationDataReader):
         self.iter = iter(self.data)
 
     def get_next(self):
+        """Return the next calibration batch, or None when the iterator is exhausted.
+
+        Returns:
+            Dict mapping input name ``"spectrogram"`` to a float32 numpy array,
+            or None to signal the end of calibration data.
+        """
         try:
             return {"spectrogram": next(self.iter)}
         except StopIteration:
